@@ -1,121 +1,545 @@
 Esimport 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const TaskMasterApp());
+void main() {
+  runApp(const BakeryApp());
 }
 
-class AppTheme {
-  static const Color background = Color(0xFF0D1117);
-  static const Color surface = Color(0xFF161B22);
-  static const Color surfaceAlt = Color(0xFF21262D);
-  static const Color border = Color(0xFF30363D);
-  static const Color primary = Color(0xFF1F6FEB);
-  static const Color primaryLight = Color(0xFF58A6FF);
-  static const Color success = Color(0xFF2EA043);
-  static const Color danger = Color(0xFFCF222E);
-  static const Color warning = Color(0xFFD29922);
-  static const Color textPrimary = Color(0xFFE6EDF3);
-  static const Color textMuted = Color(0xFF8B949E);
+class RawMaterial {
+  final int id;
+  String name;
+  String unit; // "جرام" أو "حبة"
+  double stockQty;
+  double costPerUnit;
 
-  static ThemeData get dark => ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: background,
-        colorScheme: const ColorScheme.dark(
-          primary: primary,
-          secondary: primaryLight,
-          surface: surface,
-          error: danger,
-          onPrimary: Colors.white,
-          onSurface: textPrimary,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: background,
-          elevation: 0,
-          centerTitle: true,
-          titleTextStyle: TextStyle(
-            color: textPrimary,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        floatingActionButtonTheme: const FloatingActionButtonThemeData(
-          backgroundColor: primary,
-          foregroundColor: Colors.white,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: surfaceAlt,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: border),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: border),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: primaryLight, width: 1.5),
-          ),
-        ),
-      );
-}
-
-class Task {
-  final String id;
-  String title;
-  bool done;
-  final DateTime createdAt;
-
-  Task({
+  RawMaterial({
     required this.id,
-    required this.title,
-    this.done = false,
-    required this.createdAt,
+    required this.name,
+    required this.unit,
+    this.stockQty = 0,
+    this.costPerUnit = 0,
   });
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'done': done,
-        'createdAt': createdAt.toIso8601String(),
-      };
-
-  factory Task.fromJson(Map<String, dynamic> json) => Task(
-        id: json['id'] as String,
-        title: json['title'] as String,
-        done: json['done'] as bool? ?? false,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-      );
 }
 
-class TaskMasterApp extends StatelessWidget {
-  const TaskMasterApp({super.key});
+class RecipeItem {
+  final int materialId;
+  final double qtyNeeded;
+
+  RecipeItem({required this.materialId, required this.qtyNeeded});
+}
+
+class Product {
+  final int id;
+  String name;
+  double salePrice;
+  List<RecipeItem> recipe;
+
+  Product({
+    required this.id,
+    required this.name,
+    required this.salePrice,
+    required this.recipe,
+  });
+}
+
+class SaleRecord {
+  final String productName;
+  final int qty;
+  final double totalPrice;
+  final double totalCost;
+  final DateTime date;
+
+  SaleRecord({
+    required this.productName,
+    required this.qty,
+    required this.totalPrice,
+    required this.totalCost,
+    required this.date,
+  });
+}
+
+class BakeryApp extends StatelessWidget {
+  const BakeryApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ASKAR',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
-      home: const TaskHomePage(),
+      title: 'متجر الحلويات',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5D4037)),
+        useMaterial3: true,
+      ),
+      home: const Directionality(
+        textDirection: TextDirection.rtl,
+        child: MainScreen(),
+      ),
     );
   }
 }
 
-enum TaskFilter { all, active, completed }
-
-class TaskHomePage extends StatefulWidget {
-  const TaskHomePage({super.key});
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
 
   @override
-  State<TaskHomePage> createState() => _TaskHomePageState();
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  int _currentIndex = 0;
+
+  List<RawMaterial> materials = [
+    RawMaterial(id: 1, name: "دقيق فاخر", unit: "جرام", stockQty: 5000, costPerUnit: 0.004),
+    RawMaterial(id: 2, name: "شوكولاتة داكنة", unit: "جرام", stockQty: 1000, costPerUnit: 0.05),
+    RawMaterial(id: 3, name: "شوكولاتة بيضاء", unit: "جرام", stockQty: 1000, costPerUnit: 0.045),
+    RawMaterial(id: 4, name: "بيض", unit: "حبة", stockQty: 30, costPerUnit: 0.6),
+  ];
+
+  List<Product> products = [];
+  List<SaleRecord> salesHistory = [];
+
+  @override
+  void initState() {
+    super.initState();
+    products.add(
+      Product(
+        id: 1,
+        name: "كيكة الشوكولاتة وسط",
+        salePrice: 60.0,
+        recipe: [
+          RecipeItem(materialId: 1, qtyNeeded: 200),
+          RecipeItem(materialId: 2, qtyNeeded: 10),
+          RecipeItem(materialId: 3, qtyNeeded: 10),
+          RecipeItem(materialId: 4, qtyNeeded: 2),
+        ],
+      ),
+    );
+  }
+
+  void _sellProduct(Product product) {
+    for (var item in product.recipe) {
+      final mat = materials.firstWhere((m) => m.id == item.materialId);
+      if (mat.stockQty < item.qtyNeeded) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Text("المخزون غير كافٍ من: ${mat.name} (المتبقي: ${mat.stockQty} ${mat.unit})"),
+          ),
+        );
+        return;
+      }
+    }
+
+    double cakeCost = 0;
+    setState(() {
+      for (var item in product.recipe) {
+        final mat = materials.firstWhere((m) => m.id == item.materialId);
+        mat.stockQty -= item.qtyNeeded;
+        cakeCost += (item.qtyNeeded * mat.costPerUnit);
+      }
+
+      salesHistory.insert(
+        0,
+        SaleRecord(
+          productName: product.name,
+          qty: 1,
+          totalPrice: product.salePrice,
+          totalCost: cakeCost,
+          date: DateTime.now(),
+        ),
+      );
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: Colors.green,
+        content: Text("تم البيع بنجاح! خصم المكونات تم آلياً. الربح: ${(product.salePrice - cakeCost).toStringAsFixed(2)} ر.س"),
+      ),
+    );
+  }
+
+  void _addPurchase(RawMaterial mat, double addedQty, double totalPrice) {
+    setState(() {
+      double totalOldValue = mat.stockQty * mat.costPerUnit;
+      double newTotalQty = mat.stockQty + addedQty;
+      double newCostPerUnit = (totalOldValue + totalPrice) / newTotalQty;
+
+      mat.stockQty = newTotalQty;
+      mat.costPerUnit = newCostPerUnit;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF5D4037),
+        content: Text("تمت إضافة $addedQty ${mat.unit} إلى ${mat.name}"),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screens = [
+      _buildSalesScreen(),
+      _buildInventoryScreen(),
+      _buildProductsRecipeScreen(),
+      _buildReportsScreen(),
+    ];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("متجر الكيك والحلويات", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: const Color(0xFF5D4037),
+        centerTitle: true,
+      ),
+      body: screens[_currentIndex],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.point_of_sale), label: "الكاشير"),
+          NavigationDestination(icon: Icon(Icons.inventory_2), label: "المشتريات والمخزن"),
+          NavigationDestination(icon: Icon(Icons.cake), label: "الأصناف المجمعة"),
+          NavigationDestination(icon: Icon(Icons.analytics), label: "التقارير"),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSalesScreen() {
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("الأصناف المتوفرة للبيع:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView.builder(
+              itemCount: products.length,
+              itemBuilder: (ctx, i) {
+                final p = products[i];
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFD7CCC8),
+                      child: Icon(Icons.cake, color: Color(0xFF5D4037)),
+                    ),
+                    title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                    subtitle: Text("السعر: ${p.salePrice} ر.س"),
+                    trailing: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                      onPressed: () => _sellProduct(p),
+                      icon: const Icon(Icons.shopping_cart_checkout),
+                      label: const Text("بيع"),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInventoryScreen() {
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("المخزون بالجرام والحبة:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text("مادة جديدة"),
+                onPressed: _showAddNewMaterialDialog,
+              )
+            ],
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView.builder(
+              itemCount: materials.length,
+              itemBuilder: (ctx, i) {
+                final m = materials[i];
+                return Card(
+                  child: ListTile(
+                    title: Text(m.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text("الرصيد: ${m.stockQty.toStringAsFixed(1)} ${m.unit}\nسعر الـ ${m.unit}: ${(m.costPerUnit).toStringAsFixed(4)} ر.س"),
+                    trailing: ElevatedButton(
+                      child: const Text("+ توريد"),
+                      onPressed: () => _showPurchaseDialog(m),
+                    ),
+                  ),
+                );
+              },
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProductsRecipeScreen() {
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("شجرة المكونات والوصفات:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.add),
+                label: const Text("كيكة جديدة"),
+                onPressed: _showAddProductDialog,
+              )
+            ],
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: ListView.builder(
+              itemCount: products.length,
+              itemBuilder: (ctx, i) {
+                final p = products[i];
+                return ExpansionTile(
+                  title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text("سعر البيع: ${p.salePrice} ر.س"),
+                  children: p.recipe.map((r) {
+                    final mat = materials.firstWhere((m) => m.id == r.materialId);
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.check_circle_outline, size: 18),
+                      title: Text("${mat.name}: ${r.qtyNeeded} ${mat.unit}"),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReportsScreen() {
+    double totalSales = salesHistory.fold(0, (sum, s) => sum + s.totalPrice);
+    double totalCost = salesHistory.fold(0, (sum, s) => sum + s.totalCost);
+    double netProfit = totalSales - totalCost;
+
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        children: [
+          Card(
+            color: const Color(0xFFEFEBE9),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _statItem("المبيعات", "${totalSales.toStringAsFixed(1)} ر.س", Colors.blue),
+                  _statItem("التكلفة", "${totalCost.toStringAsFixed(1)} ر.س", Colors.orange),
+                  _statItem("الأرباح", "${netProfit.toStringAsFixed(1)} ر.س", Colors.green),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Align(alignment: Alignment.centerRight, child: Text("سجل العمليات:", style: TextStyle(fontWeight: FontWeight.bold))),
+          Expanded(
+            child: salesHistory.isEmpty
+                ? const Center(child: Text("لا توجد مبيعات"))
+                : ListView.builder(
+                    itemCount: salesHistory.length,
+                    itemBuilder: (ctx, i) {
+                      final s = salesHistory[i];
+                      return ListTile(
+                        leading: const Icon(Icons.receipt),
+                        title: Text(s.productName),
+                        trailing: Text("+${s.totalPrice} ر.س"),
+                      );
+                    },
+                  ),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _statItem(String title, String val, Color color) {
+    return Column(
+      children: [
+        Text(title, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+        const SizedBox(height: 4),
+        Text(val, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+      ],
+    );
+  }
+
+  void _showPurchaseDialog(RawMaterial mat) {
+    final qtyCtrl = TextEditingController();
+    final costCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text("توريد ${mat.name}"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: qtyCtrl, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: "الكمية بـ (${mat.unit})")),
+            TextField(controller: costCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "إجمالي الفاتورة (ريال)")),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("إلغاء")),
+          ElevatedButton(
+            onPressed: () {
+              if (qtyCtrl.text.isNotEmpty && costCtrl.text.isNotEmpty) {
+                _addPurchase(mat, double.parse(qtyCtrl.text), double.parse(costCtrl.text));
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text("تأكيد"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddNewMaterialDialog() {
+    final nameCtrl = TextEditingController();
+    String unit = "جرام";
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDState) => AlertDialog(
+          title: const Text("إضافة مادة خام"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "اسم المادة")),
+              DropdownButton<String>(
+                value: unit,
+                isExpanded: true,
+                items: ["جرام", "حبة", "مل"].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                onChanged: (val) => setDState(() => unit = val!),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("إلغاء")),
+            ElevatedButton(
+              onPressed: () {
+                if (nameCtrl.text.isNotEmpty) {
+                  setState(() {
+                    materials.add(RawMaterial(id: materials.length + 1, name: nameCtrl.text, unit: unit));
+                  });
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text("حفظ"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddProductDialog() {
+    final nameCtrl = TextEditingController();
+    final priceCtrl = TextEditingController();
+    List<RecipeItem> tempRecipe = [];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDState) => AlertDialog(
+          title: const Text("إنشاء صنف مجمع"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "اسم الكيكة")),
+                TextField(controller: priceCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "سعر البيع")),
+                const Divider(),
+                const Text("المكونات المضافة:", style: TextStyle(fontWeight: FontWeight.bold)),
+                ...tempRecipe.map((r) {
+                  final m = materials.firstWhere((item) => item.id == r.materialId);
+                  return Text("- ${m.name}: ${r.qtyNeeded} ${m.unit}");
+                }),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text("إضافة مكون بالجرام/الحبة"),
+                  onPressed: () async {
+                    int selectedMatId = materials.first.id;
+                    final qCtrl = TextEditingController();
+                    await showDialog(
+                      context: ctx,
+                      builder: (c2) => StatefulBuilder(
+                        builder: (c2, setSub) => AlertDialog(
+                          title: const Text("اختر المكون"),
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              DropdownButton<int>(
+                                value: selectedMatId,
+                                isExpanded: true,
+                                items: materials.map((m) => DropdownMenuItem(value: m.id, child: Text("${m.name} (${m.unit})"))).toList(),
+                                onChanged: (v) => setSub(() => selectedMatId = v!),
+                              ),
+                              TextField(controller: qCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "الكمية المطلوبة")),
+                            ],
+                          ),
+                          actions: [
+                            ElevatedButton(
+                              onPressed: () {
+                                if (qCtrl.text.isNotEmpty) {
+                                  setDState(() {
+                                    tempRecipe.add(RecipeItem(materialId: selectedMatId, qtyNeeded: double.parse(qCtrl.text)));
+                                  });
+                                  Navigator.pop(c2);
+                                }
+                              },
+                              child: const Text("إضافة"),
+                            )
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                )
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("إلغاء")),
+            ElevatedButton(
+              onPressed: () {
+                if (nameCtrl.text.isNotEmpty && priceCtrl.text.isNotEmpty && tempRecipe.isNotEmpty) {
+                  setState(() {
+                    products.add(Product(
+                      id: products.length + 1,
+                      name: nameCtrl.text,
+                      salePrice: double.parse(priceCtrl.text),
+                      recipe: tempRecipe,
+                    ));
+                  });
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text("حفظ الكيكة"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _TaskHomePageState extends State<TaskHomePage>
